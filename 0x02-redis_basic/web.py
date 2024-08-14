@@ -1,47 +1,38 @@
 #!/usr/bin/env python3
-"""Redis Module"""
-
-from functools import wraps
+'''A module with tools for request caching and tracking.
+'''
 import redis
 import requests
+from functools import wraps
 from typing import Callable
 
-# Connect to Redis
-try:
-    redis_ = redis.Redis()
-    redis_.ping()  # Test connection
-except redis.ConnectionError:
-    print("Could not connect to Redis. Make sure the Redis server is running.")
-    raise
 
-def count_requests(method: Callable) -> Callable:
-    """Decorator for counting requests and caching HTML."""
+redis_store = redis.Redis()
+'''The module-level Redis instance.
+'''
+
+
+def data_cacher(method: Callable) -> Callable:
+    '''Caches the output of fetched data.
+    '''
     @wraps(method)
-    def wrapper(url: str) -> str:
-        """Wrapper function for the decorator."""
-        redis_.incr(f"count:{url}")
-        cached_html = redis_.get(f"cached:{url}")
-        if cached_html:
-            return cached_html.decode('utf-8')
-        
-        try:
-            html = method(url)
-            redis_.setex(f"cached:{url}", 10, html)
-            return html
-        except requests.RequestException as e:
-            return f"Error fetching the page: {e}"
+    def invoker(url) -> str:
+        '''The wrapper function for caching the output.
+        '''
+        redis_store.incr(f'count:{url}')
+        result = redis_store.get(f'result:{url}')
+        if result:
+            return result.decode('utf-8')
+        result = method(url)
+        redis_store.set(f'count:{url}', 0)
+        redis_store.setex(f'result:{url}', 10, result)
+        return result
+    return invoker
 
-    return wrapper
 
-@count_requests
+@data_cacher
 def get_page(url: str) -> str:
-    """Obtain the HTML content of a URL."""
-    req = requests.get(url, timeout=5)  # Add timeout to handle slow responses
-    req.raise_for_status()  # Raise an exception for HTTP errors
-    return req.text
-
-# Example usage
-if __name__ == "__main__":
-    url = "http://slowwly.robertomurray.co.uk/delay/5000/url/https://www.google.com"
-    print(get_page(url))
-
+    '''Returns the content of a URL after caching the request's response,
+    and tracking the request.
+    '''
+    return requests.get(url).text
