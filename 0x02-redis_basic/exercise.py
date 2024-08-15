@@ -2,9 +2,10 @@
 '''A module for using the Redis NoSQL data storage.
 '''
 from functools import wraps
-from typing import Any, Callable, Union
 import redis
 import uuid
+from uuid import uuid4
+from typing import Any, Callable, Optional, Union
 
 
 def count_calls(method: Callable) -> Callable:
@@ -101,13 +102,6 @@ class Cache:
         '''Retrieves an integer value from a Redis data storage.
         '''
         return self.get(key, lambda x: int(x))
-#!/usr/bin/env python3
-""" Redis client module
-"""
-import redis
-from uuid import uuid4
-from functools import wraps
-from typing import Any, Callable, Optional, Union
 
 
 def count_calls(method: Callable) -> Callable:

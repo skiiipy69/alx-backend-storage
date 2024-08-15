@@ -1,32 +1,53 @@
 #!/usr/bin/env python3
-""" Redis Module """
+'''A module with tools for request caching and tracking.
+'''
 
-from functools import wraps
 import redis
 import requests
+from functools import wraps
 from typing import Callable
 
-redis_ = redis.Redis()
+# Update Redis connection to use port 6380
+redis_store = redis.Redis(host='localhost', port=6380)
+'''The module-level Redis instance.
+'''
 
-
-def count_requests(method: Callable) -> Callable:
-    """ Decortator for counting """
+def data_cacher(method: Callable) -> Callable:
+    '''Caches the output of fetched data.
+    '''
     @wraps(method)
-    def wrapper(url):  # sourcery skip: use-named-expression
-        """ Wrapper for decorator """
-        redis_.incr(f"count:{url}")
-        cached_html = redis_.get(f"cached:{url}")
-        if cached_html:
-            return cached_html.decode('utf-8')
-        html = method(url)
-        redis_.setex(f"cached:{url}", 10, html)
-        return html
+    def invoker(url: str) -> str:
+        '''The wrapper function for caching the output.
+        '''
+        redis_store.incr(f'count:{url}')  # Increment access count
+        result = redis_store.get(f'result:{url}')
+        if result:
+            return result.decode('utf-8')
+        
+        # Fetch data and cache it
+        result = method(url)
+        redis_store.setex(f'result:{url}', 10, result)
+        return result
+    
+    return invoker
 
-    return wrapper
-
-
-@count_requests
+@data_cacher
 def get_page(url: str) -> str:
-    """ Obtain the HTML content of a  URL """
-    req = requests.get(url)
-    return req.text
+    '''Returns the content of a URL after caching the request's response,
+    and tracking the request.
+    '''
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+        return response.text
+    except requests.RequestException as e:
+        return str(e)
+
+# Testing the function
+if __name__ == "__main__":
+    url = 'http://google.com'
+    print(get_page(url))
+    
+    # Fetch and print the count of how many times the page was accessed
+    count = redis_store.get(f'count:{url}')
+    print(count.decode('utf-8') if count else '0')  # Handle case where count is None
